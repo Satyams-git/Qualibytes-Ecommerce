@@ -27,7 +27,7 @@ spec:
                 port:
                   number: 80
 
-    - host: qbshop.asriv.shop
+    - host: asriv.shop
       http:
         paths:
           - path: /
@@ -38,7 +38,7 @@ spec:
                 port:
                   number: 80
 
-    - host: www.qbshop.asriv.shop
+    - host: asriv.shop
       http:
         paths:
           - path: /
