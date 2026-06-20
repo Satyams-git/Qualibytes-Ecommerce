@@ -14,7 +14,7 @@ spec:
     - qbshop.asriv.shop
     secretName: qbshop-tls
   rules:
-  - host: qbshop.asriv.shop
+  - host: asriv.shop
     http:
       paths:
       - path: /
