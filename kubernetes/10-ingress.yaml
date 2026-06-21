@@ -14,7 +14,7 @@ spec:
     - qbshop.ishwarrugs.shop
     secretName: qbshop-tls
   rules:
-  - host: ishwarrugs.shop
+  - host: asriv.shop
     http:
       paths:
       - path: /
