@@ -4,47 +4,34 @@ metadata:
   name: qbshop-ingress
   namespace: qbshop
   annotations:
-    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-body-size: '50m'
+    kubernetes.io/ingress.class: 'nginx'
+    cert-manager.io/cluster-issuer: 'letsencrypt-prod'
+    nginx.ingress.kubernetes.io/ssl-redirect: 'true'
 spec:
-  ingressClassName: nginx
-
   tls:
-    - hosts:
-        - asriv.shop
-        - qbshop.asriv.shop
-        - www.qbshop.asriv.shop
-      secretName: qbshop-tls-secret
-
+  - hosts:
+    - qbshop.ishwarrugs.shop
+    - ishwarrugs.shop
+    secretName: qbshop-tls
   rules:
-    - host: asriv.shop
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: qbshop-service
-                port:
-                  number: 80
-
-    - host: qbshop.asriv.shop
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: qbshop-service
-                port:
-                  number: 80
-
-    - host: www.qbshop.asriv.shop
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: qbshop-service
-                port:
-                  number: 80
+  - host: qbshop.ishwarrugs.shop
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: qbshop-service
+            port:
+              number: 80
+  - host: ishwarrugs.shop
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: qbshop-service
+            port:
+              number: 80
