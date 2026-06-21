@@ -12,9 +12,20 @@ spec:
   tls:
   - hosts:
     - qbshop.ishwarrugs.shop
+    - ishwarrugs.shop
     secretName: qbshop-tls
   rules:
-  - host: asriv.shop
+  - host: qbshop.ishwarrugs.shop
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: qbshop-service
+            port:
+              number: 80
+  - host: ishwarrugs.shop
     http:
       paths:
       - path: /
