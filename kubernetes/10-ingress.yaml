@@ -5,10 +5,10 @@ metadata:
   namespace: qbshop
   annotations:
     nginx.ingress.kubernetes.io/proxy-body-size: '50m'
-    kubernetes.io/ingress.class: 'nginx'
     cert-manager.io/cluster-issuer: 'letsencrypt-prod'
     nginx.ingress.kubernetes.io/ssl-redirect: 'true'
 spec:
+  ingressClassName: nginx
   tls:
   - hosts:
     - qbshop.ishwarrugs.shop
