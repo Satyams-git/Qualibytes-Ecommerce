@@ -8,7 +8,7 @@ spec:
     spec:
       containers:
       - name: qbs-migration
-        image: satyamsri/qbshop-migration:3
+        image: satyamsri/qbshop-migration:4
         imagePullPolicy: Always
         env:
         - name: MONGODB_URI
