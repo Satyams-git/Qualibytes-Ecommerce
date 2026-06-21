@@ -11,10 +11,10 @@ metadata:
 spec:
   tls:
   - hosts:
-    - qbshop.asriv.shop
+    - qbshop.ishwarrugs.shop
     secretName: qbshop-tls
   rules:
-  - host: asriv.shop
+  - host: ishwarrugs.shop
     http:
       paths:
       - path: /
