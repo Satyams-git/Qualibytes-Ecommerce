@@ -60,9 +60,9 @@ Code Push (GitHub dev branch)
 ### Required Accounts
 - **AWS Account** with IAM user (programmatic access, AdministratorAccess for demo)
 - **GitHub Account** — fork both repos (app + shared library)
-- **DockerHub Account** — images push hone ke liye
+- **DockerHub Account** — required for pushing Docker images
 
-### Required Tools (Host/Bastion EC2 pe install karo)
+### Required Tools (Install on Host/Bastion EC2)
 
 ```bash
 # 1. AWS CLI
@@ -92,9 +92,9 @@ git config --global user.email "your@email.com"
 # 4. Docker + Docker Compose
 sudo apt-get install docker.io -y
 sudo usermod -aG docker $USER
-# LOGOUT and LOGIN again for group to take effect
+# LOGOUT and LOGIN again for the group change to take effect
 
-# Docker Compose Plugin (Ubuntu docker.io mein nahi aata)
+# Docker Compose Plugin (not included in Ubuntu's docker.io package)
 sudo mkdir -p /usr/local/lib/docker/cli-plugins
 sudo curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64 \
   -o /usr/local/lib/docker/cli-plugins/docker-compose
@@ -105,7 +105,7 @@ docker compose version
 sudo snap install kubectl --classic
 sudo snap install helm --classic
 
-# 6. eksctl (EBS CSI Driver setup ke liye)
+# 6. eksctl (required for EBS CSI Driver setup)
 curl -sLO "https://github.com/eksctl-io/eksctl/releases/latest/download/eksctl_Linux_amd64.tar.gz"
 tar -xzf eksctl_Linux_amd64.tar.gz
 sudo mv eksctl /usr/local/bin/
@@ -123,7 +123,7 @@ kubectl version --client && helm version --short && eksctl version
 
 ### Step 1 — Fork & Configure Repos
 
-> ⚠️ **IMPORTANT:** 2 repos fork karo aur DockerHub username update karo
+> ⚠️ **IMPORTANT:** Fork both repos and update the DockerHub username
 
 **Fork App Repo:**
 1. Fork: `https://github.com/Satyams-git/Qualibytes-Ecommerce`
@@ -169,21 +169,21 @@ kubectl get nodes  # 2 nodes, STATUS: Ready
 
 ### Step 3.5 — Local Testing with Docker Compose (Optional)
 
-> This step is optional — production deployment ArgoCD se hoti hai. Yeh sirf local testing ke liye hai to verify app works before deploying to EKS.
+> This step is optional — production deployment is handled by ArgoCD. This is only for verifying the app works locally before deploying to EKS.
 
-**`docker-compose.yml` mein `build:` directive HAI** — yeh khud Dockerfile se images build karta hai (sirf pull nahi karta).
+**`docker-compose.yml` includes `build:` directives** — it builds images locally from Dockerfiles (not just pulling from DockerHub).
 
-3 services hain: MongoDB → Migration (seed 516 products) → App (Next.js)
+3 services run in order: MongoDB → Migration (seeds 516 products) → App (Next.js)
 
 ```bash
 cd ~/Qualibytes-Ecommerce
 
-# DockerHub login (optional — build ke liye zaruri nahi, push ke liye chahiye)
+# DockerHub login (optional — not required for build, only for push)
 docker login
 
-# .env.local file banao (Docker Compose isse read karta hai)
-# EC2 pe test kar rahe ho toh EC2 ka PUBLIC IP daalo, localhost nahi
-# Secrets generate karo pehle:
+# Create .env.local file (Docker Compose reads from this)
+# If testing on EC2, use the EC2 PUBLIC IP instead of localhost
+# Generate secrets first:
 echo "NEXTAUTH_SECRET: $(openssl rand -base64 32)"
 echo "JWT_SECRET: $(openssl rand -hex 32)"
 
@@ -195,34 +195,34 @@ NEXTAUTH_SECRET=paste_generated_base64_here
 JWT_SECRET=paste_generated_hex_here
 EOF
 
-# Edit karo aur actual values paste karo
+# Edit and paste actual values
 nano .env.local
 
-# Run karo (first time ~10-15 min build lagega)
+# Start all services (first run takes ~10-15 min to build)
 docker compose up -d
 
 # Verify
 docker ps                     # 2 containers: qbs-mongodb, qbs-app
-docker logs qbs-migration     # "Migrated 516 products" dikhna chahiye
+docker logs qbs-migration     # Should show "Migrated 516 products"
 
 # Browser: http://<EC2-IP>:3000
-# EC2 security group mein port 3000 open karo
+# Make sure port 3000 is open in EC2 security group
 
-# Cleanup (EKS deploy se pehle)
+# Cleanup (before deploying to EKS)
 docker compose down
 ```
 
 > **Notes:**
-> - `.env` file repo mein hai (common defaults), `.env.local` personal secrets ke liye hai (gitignored)
-> - MONGODB_URI mein container name `qbs-mongodb` use karo — `localhost` docker network mein kaam nahi karega
-> - Build time pe `ECONNREFUSED 127.0.0.1:27017` errors NORMAL hain — runtime pe docker network se connect hoga
-> - `docker login` nahi kiya toh "pull access denied" warning aayegi but build se kaam chal jaayega
+> - `.env` is in the repo (common defaults), `.env.local` is for personal secrets (gitignored)
+> - Use container name `qbs-mongodb` in MONGODB_URI — `localhost` won't work inside the Docker network
+> - `ECONNREFUSED 127.0.0.1:27017` errors during build are NORMAL — the app connects via Docker network at runtime
+> - If `docker login` is skipped, you'll see "pull access denied" warnings, but the build will still work
 
 ### Step 4 — Fix Jenkins on Jenkins EC2
 
 > ⚠️ **KNOWN ISSUE:** `install_tools.sh` has 2 bugs:
 > 1. Installs Java 17 — Jenkins 2.479+ requires **Java 21**
-> 2. Jenkins GPG key method is outdated — keyserver method needed
+> 2. Jenkins GPG key method is outdated — keyserver method is needed
 
 ```bash
 # SSH into Jenkins EC2
@@ -243,16 +243,16 @@ echo "deb [signed-by=/usr/share/keyrings/jenkins-keyring.gpg] https://pkg.jenkin
 sudo apt-get update && sudo apt-get install -y jenkins
 sudo systemctl start jenkins && sudo systemctl enable jenkins
 
-# If restart limit hit:
+# If restart limit is hit:
 sudo systemctl reset-failed jenkins
 sudo systemctl start jenkins
 
-# Docker permission for Jenkins
+# Grant Docker permission to Jenkins user
 sudo usermod -aG docker jenkins
 sudo chmod 666 /var/run/docker.sock
 sudo systemctl restart jenkins
 
-# Configure AWS CLI on Jenkins EC2 too (pipeline needs EKS access)
+# Configure AWS CLI on Jenkins EC2 (pipeline needs EKS access)
 aws configure
 aws eks --region ap-south-1 update-kubeconfig --name qualibytes-eks-cluster
 
@@ -282,19 +282,19 @@ Open: `http://<JENKINS-EC2-IP>:8080`
    - **Additional Behaviours → "Polling ignores commits from certain users" → `Jenkins CI`** (prevents CI loop)
    - Script Path: `Jenkinsfile`
 8. **Webhook:** GitHub repo → Settings → Webhooks → Add:
-   - Payload URL: `http://<JENKINS-EC2-IP>:8080/github-webhook/`
+   - Payload URL: `http://<JENKINS-EC2-IP>:8080/github-webhook/` (use Jenkins EC2 IP, not Host EC2)
    - Content type: `application/json`
    - Events: Just the push event
 9. Click **Build Now** — all stages should be green
 
 ### Step 6 — EBS CSI Driver (Required for MongoDB Storage)
 
-> ⚠️ **Without this, MongoDB pod will stay in Pending state**
+> ⚠️ **Without this, the MongoDB pod will remain in Pending state**
 
 ```bash
-# On Host/Bastion EC2:
+# Run on Host/Bastion EC2:
 
-# 1. Get node group name (Terraform adds dynamic suffix)
+# 1. Get the node group name (Terraform adds a dynamic suffix)
 aws eks list-nodegroups --cluster-name qualibytes-eks-cluster --region ap-south-1
 # Copy the full name (e.g., qualibytes-demo-ng-2026062014293236510000000a)
 
@@ -309,19 +309,19 @@ eksctl create iamserviceaccount \
   --attach-policy-arn arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy \
   --approve --role-only --role-name AmazonEKS_EBS_CSI_DriverRole
 
-# 4. Install EBS CSI addon with role
+# 4. Install EBS CSI addon with the IAM role
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 aws eks create-addon \
   --cluster-name qualibytes-eks-cluster \
   --addon-name aws-ebs-csi-driver --region ap-south-1 \
   --service-account-role-arn arn:aws:iam::${ACCOUNT_ID}:role/AmazonEKS_EBS_CSI_DriverRole
 
-# 5. Verify (wait 2-3 min)
+# 5. Verify (wait 2-3 minutes)
 kubectl get pods -n kube-system | grep ebs
 # ebs-csi-controller: 6/6 Running
 ```
 
-**If controller shows CrashLoopBackOff (trust policy mismatch):**
+**If the controller shows CrashLoopBackOff (trust policy mismatch):**
 ```bash
 OIDC_URL=$(aws eks describe-cluster --name qualibytes-eks-cluster --region ap-south-1 \
   --query "cluster.identity.oidc.issuer" --output text | sed 's|https://||')
@@ -368,7 +368,7 @@ helm install nginx-ingress ingress-nginx/ingress-nginx \
   --set controller.service.type=LoadBalancer
 
 kubectl get pods -n ingress-nginx        # 1/1 Running
-kubectl get svc -n ingress-nginx         # Note EXTERNAL-IP (LoadBalancer hostname)
+kubectl get svc -n ingress-nginx         # Note the EXTERNAL-IP (LoadBalancer hostname)
 ```
 
 ### Step 8 — Cert-Manager
@@ -384,7 +384,7 @@ helm install cert-manager jetstack/cert-manager \
   --set crds.enabled=false
 
 kubectl get pods -n cert-manager         # 3 pods Running
-kubectl get crds | grep cert-manager     # 6 CRDs
+kubectl get crds | grep cert-manager     # 6 CRDs should appear
 ```
 
 ### Step 9 — ArgoCD (GitOps)
@@ -393,43 +393,43 @@ kubectl get crds | grep cert-manager     # 6 CRDs
 # Install
 kubectl create namespace argocd
 kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
-kubectl get pods -n argocd -w  # Wait for all Running
+kubectl get pods -n argocd -w  # Wait until all pods are Running
 
-# Access
+# Expose the server
 kubectl patch svc argocd-server -n argocd -p '{"spec":{"type":"NodePort"}}'
 kubectl port-forward svc/argocd-server -n argocd 8085:443 --address=0.0.0.0 &
 
-# Password
+# Get admin password
 kubectl -n argocd get secret argocd-initial-admin-secret \
   -o jsonpath="{.data.password}" | base64 -d; echo
 
 # Browser: https://<HOST-EC2-IP>:8085
-# Username: admin | Password: above output
+# Username: admin | Password: output from above command
 ```
 
-**ArgoCD Password Reset (agar password bhool gaye ya login nahi ho raha):**
+**ArgoCD Password Reset (if password is forgotten or login fails):**
 
 ```bash
-# Method 1 — Initial secret se password nikalo
+# Method 1 — Retrieve password from initial secret
 kubectl -n argocd get secret argocd-initial-admin-secret \
   -o jsonpath="{.data.password}" | base64 -d; echo
 
-# Method 2 — Agar secret delete ho gaya, naya password set karo
-# argocd CLI install karo
+# Method 2 — If the secret was deleted, set a new password
+# Install argocd CLI
 curl -sSL -o argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
 chmod +x argocd && sudo mv argocd /usr/local/bin/
 
-# Admin password reset karo
+# Reset admin password (new password: admin123)
 kubectl -n argocd patch secret argocd-secret \
   -p '{"stringData": {"admin.password": "'$(htpasswd -nbBC 10 "" admin123 | tr -d ':\n' | sed 's/$2y/$2a/')'", "admin.passwordMtime": "'$(date +%FT%T%Z)'"}}'
 
-# ArgoCD server restart karo
+# Restart ArgoCD server
 kubectl rollout restart deployment argocd-server -n argocd
 sleep 60
 
-# Ab login karo: admin / admin123
+# Login with: admin / admin123
 
-# htpasswd nahi hai toh install karo:
+# If htpasswd is not installed:
 # sudo apt install apache2-utils -y
 ```
 
@@ -448,7 +448,7 @@ sleep 60
 | Cluster URL | https://kubernetes.default.svc |
 | Namespace | qbshop |
 
-> ⚠️ **Job Immutable Error:** If ArgoCD fails to sync `db-migration` Job, run:
+> ⚠️ **Job Immutable Error:** If ArgoCD fails to sync the `db-migration` Job, run:
 > ```bash
 > kubectl delete job db-migration -n qbshop
 > ```
@@ -461,42 +461,226 @@ sleep 60
 
 ### Step 10 — DNS Setup
 
-1. Get LoadBalancer hostname:
+1. Get the LoadBalancer hostname:
 ```bash
 kubectl get svc -n ingress-nginx | grep LoadBalancer
-# Copy EXTERNAL-IP hostname
+# Copy the EXTERNAL-IP hostname
 ```
 
-2. In your domain registrar (GoDaddy/Hostinger), add CNAME:
+2. In your domain registrar (GoDaddy/Hostinger), add a CNAME record:
 
 | Type | Name | Value |
 |------|------|-------|
 | CNAME | qbshop | `xxxx.ap-south-1.elb.amazonaws.com` |
 
-3. Wait 5-15 min for DNS propagation
+3. Wait 5-15 minutes for DNS propagation
 4. Verify:
 ```bash
 nslookup qbshop.yourdomain.com
 kubectl get certificate -n qbshop   # READY: True
 ```
 
-5. Browser: `https://qbshop.yourdomain.com`
+5. Open in browser: `https://qbshop.yourdomain.com`
 
-### Step 11 — Monitoring (Optional)
+### Step 11 — Monitoring (Prometheus + Grafana)
+
+**Components installed by `kube-prometheus-stack`:**
+
+| Component | Purpose |
+|-----------|---------|
+| Prometheus | Collects metrics — CPU, memory, pod status, network |
+| Grafana | Visualization dashboards — real-time graphs and alerts |
+| Alertmanager | Alert routing — email/Slack notifications |
+| Node Exporter | Node-level metrics for each K8s worker node |
+| Kube State Metrics | Kubernetes object status — pods, deployments, HPA |
+| Prometheus Operator | Kubernetes-native Prometheus deployment and configuration |
+
+**Install (on Host EC2):**
 
 ```bash
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm repo update
+
 helm install qbshop-monitoring prometheus-community/kube-prometheus-stack \
   --namespace monitoring --create-namespace \
   --set grafana.adminPassword='qbshop@grafana123' \
-  --set prometheus.prometheusSpec.retention=15d
+  --set prometheus.prometheusSpec.retention=15d \
+  --set prometheus.prometheusSpec.retentionSize='5GB'
 
-# Grafana access
-kubectl port-forward svc/qbshop-monitoring-grafana -n monitoring 3001:80 --address=0.0.0.0 &
+# Wait 3-5 minutes — creates ~35 Kubernetes objects
+kubectl get pods -n monitoring -w
+# Press Ctrl+C when all pods show Running
+```
+
+**Access Grafana:**
+
+```bash
+kubectl port-forward svc/qbshop-monitoring-grafana \
+  -n monitoring 3001:80 --address=0.0.0.0 &
+
 # Browser: http://<HOST-EC2-IP>:3001
 # Username: admin | Password: qbshop@grafana123
+# Make sure port 3001 is open in EC2 security group
 ```
+
+**Explore Dashboards in Grafana:**
+- Navigate to: Left panel → Dashboards → Browse
+- Search: `Kubernetes / Compute Resources / Namespace (Pods)` → select namespace `qbshop`
+- Other useful dashboards:
+  - `Kubernetes / Compute Resources / Cluster` — full cluster overview
+  - `Node Exporter / Nodes` — EC2 node disk/network/CPU metrics
+
+**Verify:**
+
+```bash
+kubectl get pods -n monitoring        # prometheus, grafana, alertmanager, node-exporter should be Running
+helm list -n monitoring               # qbshop-monitoring should show as deployed
+```
+
+**Upgrade / Uninstall:**
+
+```bash
+# To update settings (e.g., change password):
+helm upgrade qbshop-monitoring prometheus-community/kube-prometheus-stack \
+  --namespace monitoring \
+  --set grafana.adminPassword='newpassword'
+
+# To uninstall:
+helm uninstall qbshop-monitoring -n monitoring
+```
+
+### Monitoring Files — Custom Setup (Advanced)
+
+> The `kube-prometheus-stack` Helm chart provides complete out-of-the-box monitoring.
+> If you need custom dashboards, alerts, or app-specific metrics, add these files to the project:
+
+**Where to place monitoring files in the project:**
+
+```
+Qualibytes-Ecommerce/
+├── monitoring/                          # ← Create this new folder
+│   ├── Chart.yaml                       # Helm chart definition
+│   ├── values.yaml                      # Prometheus/Grafana configuration
+│   └── templates/
+│       ├── servicemonitor.yaml          # Scrape QBShop app metrics via Prometheus
+│       ├── prometheusrule.yaml          # Custom alert rules
+│       └── grafana-dashboard-cm.yaml    # Pre-built QBShop Grafana dashboard
+```
+
+**1. ServiceMonitor — Scrape App Metrics (`monitoring/templates/servicemonitor.yaml`):**
+
+```yaml
+# Tells Prometheus to collect metrics from the QBShop app
+# Requires a /api/metrics endpoint in the app (using prom-client library)
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: qbshop-monitor
+  namespace: qbshop
+  labels:
+    app: qbshop
+spec:
+  selector:
+    matchLabels:
+      app: qbshop
+  endpoints:
+    - port: http
+      path: /api/metrics
+      interval: 30s
+  namespaceSelector:
+    matchNames:
+      - qbshop
+```
+
+**2. PrometheusRule — Custom Alerts (`monitoring/templates/prometheusrule.yaml`):**
+
+```yaml
+# Custom alert rules for QBShop
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: qbshop-alerts
+  namespace: qbshop
+spec:
+  groups:
+    - name: qbshop.availability
+      rules:
+        - alert: QBShopPodDown
+          expr: kube_deployment_status_replicas_available{deployment="qbshop", namespace="qbshop"} < 1
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "All QBShop pods are down!"
+
+        - alert: QBShopHighCPU
+          expr: |
+            sum(rate(container_cpu_usage_seconds_total{namespace="qbshop", container="qbs-app"}[5m]))
+            / sum(kube_pod_container_resource_limits{namespace="qbshop", container="qbs-app", resource="cpu"}) > 0.85
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "QBShop CPU usage is above 85%"
+
+        - alert: MongoDBPodNotReady
+          expr: kube_statefulset_status_replicas_ready{statefulset="mongodb", namespace="qbshop"} < 1
+          for: 3m
+          labels:
+            severity: critical
+          annotations:
+            summary: "MongoDB pod is not ready!"
+
+        - alert: QBShopAtMaxReplicas
+          expr: |
+            kube_horizontalpodautoscaler_status_current_replicas{namespace="qbshop"}
+            >= kube_horizontalpodautoscaler_spec_max_replicas{namespace="qbshop"}
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "HPA is at maximum replicas — scaling limit reached"
+```
+
+**3. Expose Metrics in Next.js App (required if using ServiceMonitor):**
+
+```bash
+# Install prom-client in the app
+cd Qualibytes-Ecommerce
+npm install prom-client
+```
+
+```typescript
+// src/app/api/metrics/route.ts — create this new file
+import { NextResponse } from 'next/server';
+import client from 'prom-client';
+
+const register = new client.Registry();
+client.collectDefaultMetrics({ register });
+
+export async function GET() {
+  const metrics = await register.metrics();
+  return new NextResponse(metrics, {
+    headers: { 'Content-Type': register.contentType },
+  });
+}
+```
+
+**4. Deploy Custom Monitoring:**
+
+```bash
+# Option A — Apply directly with kubectl
+kubectl apply -f monitoring/templates/servicemonitor.yaml
+kubectl apply -f monitoring/templates/prometheusrule.yaml
+
+# Option B — Install as a Helm chart
+cd monitoring/
+helm dependency update .
+helm install qbshop-monitoring . --namespace monitoring --values values.yaml
+```
+
+> **Note:** For basic monitoring, the `kube-prometheus-stack` installed in Step 11 is sufficient.
+> Custom files (ServiceMonitor, PrometheusRule, dashboard) are only needed for app-specific metrics.
 
 ---
 
@@ -512,15 +696,15 @@ kubectl port-forward svc/qbshop-monitoring-grafana -n monitoring 3001:80 --addre
 | MongoDB Pod `Pending` | EBS CSI Driver not installed / storageClassName missing | Install EBS CSI Driver (Step 6) + uncomment `storageClassName: gp2` |
 | EBS CSI `CrashLoopBackOff` | IAM trust policy mismatch | Recreate role with correct OIDC trust policy (see Step 6) |
 | ArgoCD `ClusterIssuer` CRD error | Cert-Manager CRDs not installed | `kubectl apply -f cert-manager.crds.yaml` manually |
-| ArgoCD Job `immutable` error | K8s Jobs can't be patched | `kubectl delete job db-migration -n qbshop` + SYNC |
+| ArgoCD Job `immutable` error | Kubernetes Jobs cannot be patched | `kubectl delete job db-migration -n qbshop` + SYNC |
 | Jenkins CI loop (double builds) | Webhook re-triggers on Jenkins commit | Add "Polling ignores commits from certain users" → `Jenkins CI` |
 | Ingress `404 Not Found` | Host mismatch in ingress rules | Verify ingress hosts match your domain |
 | Certificate `READY: False` | DNS not propagated or challenge failed | Wait 15 min, check `kubectl describe challenge -n qbshop` |
 | `git push rejected` | Jenkins pushed between your commits | `git pull origin dev --no-rebase` then push |
-| Shared library overwrites domain | `update_k8s_manifests.groovy` has hardcoded domain sed | Remove ingress sed line from shared library |
-| Node group name not found | Terraform adds dynamic suffix | Use `aws eks list-nodegroups` to get actual name |
+| Shared library overwrites domain | `update_k8s_manifests.groovy` has hardcoded domain sed | Remove the ingress sed line from the shared library |
+| Node group name not found | Terraform adds a dynamic suffix | Use `aws eks list-nodegroups` to get the actual name |
 | `eksctl iamserviceaccount` fails | CloudFormation stack already exists | Delete stack (disable termination protection first) then retry |
-| EC2 IP changed after restart | No Elastic IP assigned | Assign Elastic IP or update webhook URL |
+| EC2 IP changed after restart | No Elastic IP assigned | Assign an Elastic IP or update the webhook URL |
 | `helm repo not found` | Helm repos are session-scoped | Re-run `helm repo add` after EC2 restart |
 
 ---
@@ -551,34 +735,97 @@ terraform destroy  # type 'yes', takes ~15 min
 ```
 Qualibytes-Ecommerce/
 ├── src/
-│   ├── app/              # Next.js App Router (pages + API routes)
-│   ├── components/       # React UI components
+│   ├── app/                    # Next.js App Router
+│   │   ├── api/                # Backend API routes
+│   │   │   ├── auth/           #   login, register, logout, me, check
+│   │   │   ├── products/       #   CRUD, search, filter, featured, books
+│   │   │   ├── cart/           #   add, remove, get cart
+│   │   │   └── orders/         #   create, list, get by id
+│   │   ├── (auth)/             # Auth pages (login, register)
+│   │   ├── shops/              # Shop category pages
+│   │   ├── products/           # Product detail pages
+│   │   ├── checkout/           # Checkout + success page
+│   │   ├── profile/            # User profile, orders, wishlists
+│   │   └── page.tsx            # Homepage
+│   ├── components/             # React UI components (Navbar, Cards, Filters, etc.)
 │   ├── lib/
-│   │   ├── models/       # MongoDB models (Product, User, Cart, Order)
-│   │   ├── auth/         # JWT authentication utilities
-│   │   ├── features/     # Redux slices (auth, cart, sidebar)
-│   │   └── store.ts      # Redux store configuration
-│   └── middleware.ts      # Route protection middleware
-├── kubernetes/            # K8s manifests (ArgoCD monitors this folder)
-├── terraform/             # AWS infrastructure (VPC, EC2, EKS)
-├── scripts/               # Migration script + Dockerfile.migration
-├── .db/                   # Seed data (516 products)
-├── Dockerfile             # Production multi-stage build
-├── Dockerfile.dev         # Development build
-├── docker-compose.yml     # Local development (builds + runs app)
-├── Jenkinsfile            # CI pipeline definition
-└── next.config.js         # output: 'standalone' (required for Docker)
+│   │   ├── models/             # MongoDB Mongoose models
+│   │   │   ├── product.ts      #   Product (title, price, categories, images, rating)
+│   │   │   ├── user.ts         #   User (email, bcrypt password, role: user/admin)
+│   │   │   ├── cart.ts         #   Cart (user ref, items[], auto-calculated total)
+│   │   │   └── order.ts        #   Order (items, status, shippingAddress, paymentStatus)
+│   │   ├── auth/utils.ts       # JWT create/verify (jose, HS256, 30-day expiry)
+│   │   ├── db.ts               # MongoDB connection (Mongoose)
+│   │   ├── features/           # Redux Toolkit slices
+│   │   │   ├── auth/authSlice.ts    # isAuthenticated, currentUser (persisted to localStorage)
+│   │   │   ├── cart/cartSlice.ts    # cartItems, wishlists, selectedSize (persisted to localStorage)
+│   │   │   └── sidebar/sidebarSlice.ts  # sidebar open/close (not persisted)
+│   │   └── store.ts            # Redux store configuration
+│   ├── middleware.ts            # Route protection (JWT check, role-based, runs on edge runtime)
+│   └── data/                   # Static data (categories, colors, shops list)
+│
+├── kubernetes/                  # Kubernetes manifests — ArgoCD monitors this folder (dev branch)
+│   ├── 00-cluster-issuer.yml   #   Let's Encrypt ACME ClusterIssuer
+│   ├── 01-namespace.yaml       #   qbshop namespace
+│   ├── 02-mongodb-pv.yaml      #   PersistentVolume (hostPath — local only, skip on EKS)
+│   ├── 03-mongodb-pvc.yaml     #   EMPTY FILE — StatefulSet creates its own PVC
+│   ├── 04-configmap.yaml       #   Non-secret env vars (MONGODB_URI, URLs, NODE_ENV)
+│   ├── 05-secrets.yaml         #   JWT_SECRET, NEXTAUTH_SECRET (change default values!)
+│   ├── 06-mongodb-service.yaml #   MongoDB ClusterIP service (port 27017)
+│   ├── 07-mongodb-statefulset.yaml  # MongoDB pod (uncomment storageClassName: gp2 for EKS)
+│   ├── 08-qbshop-deployment.yaml    # App deployment (2 replicas, health probes, resource limits)
+│   ├── 09-qbshop-service.yaml  #   App NodePort service (80→3000, NodePort 30000)
+│   ├── 10-ingress.yaml         #   Nginx Ingress rules + TLS (UPDATE YOUR DOMAIN!)
+│   ├── 11-hpa.yaml             #   HorizontalPodAutoscaler (CPU 70%, 2-5 replicas)
+│   └── 12-migration-job.yaml   #   One-time Job — seeds 516 products into MongoDB
+│
+├── terraform/                   # AWS infrastructure
+│   ├── provider.tf             #   AWS provider, region: ap-south-1
+│   ├── variables.tf            #   instance_type, region, environment
+│   ├── vpc.tf                  #   Custom VPC for EKS (public + private + intra subnets)
+│   ├── ec2.tf                  #   Jenkins EC2 (Ubuntu 24.04, t2.medium, 25GB, default VPC)
+│   ├── eks.tf                  #   EKS cluster + node group (t2.large SPOT, 2-3 nodes)
+│   ├── outputs.tf              #   public_ip, eks_cluster_name, vpc_id
+│   └── install_tools.sh        #   EC2 bootstrap script (⚠️ has bugs — see Step 4)
+│
+├── monitoring/                  # Custom monitoring (OPTIONAL — create if needed)
+│   ├── Chart.yaml              #   Helm chart definition + kube-prometheus-stack dependency
+│   ├── values.yaml             #   Prometheus/Grafana/Alertmanager configuration
+│   └── templates/
+│       ├── servicemonitor.yaml      # Scrape QBShop app /api/metrics endpoint
+│       ├── prometheusrule.yaml      # Custom alerts (pod down, high CPU, MongoDB down, HPA max)
+│       └── grafana-dashboard-cm.yaml # Pre-built QBShop Grafana dashboard
+│
+├── scripts/
+│   ├── Dockerfile.migration    #   Docker image for seeding MongoDB
+│   ├── migrate-data.ts         #   Reads .db/db.json → inserts products into MongoDB
+│   └── tsconfig.json           #   TypeScript config for migration script
+│
+├── .db/
+│   ├── db.json                 #   516 products data (all categories)
+│   └── routes.json             #   URL routing rules (legacy json-server)
+│
+├── Dockerfile                   # Production multi-stage build (builder → runner ~200MB)
+├── Dockerfile.dev               # Development build
+├── docker-compose.yml           # Local development — builds + runs MongoDB, migration, app
+├── Jenkinsfile                  # CI pipeline (7 stages, dev branch, Shared library)
+├── next.config.js               # output: 'standalone' (REQUIRED for Docker)
+├── .env                         # Default env vars (committed to repo, non-secret)
+├── .env.local                   # Personal secrets (gitignored, read by docker-compose)
+└── .dockerignore                # Files excluded from Docker build context
 ```
 
 ---
 
 ## 📝 Important Notes
 
-- **Working branch is `dev`** — Jenkinsfile uses `GIT_BRANCH = "dev"`. Pipeline triggers on dev branch pushes only.
+- **Working branch is `dev`** — Jenkinsfile uses `GIT_BRANCH = "dev"`. Pipeline triggers only on dev branch pushes.
 - **Shared Library name is `Shared`** (capital S) — must match `@Library('Shared')` in Jenkinsfile.
-- **`03-mongodb-pvc.yaml` is an empty file** — StatefulSet creates its own PVC via `volumeClaimTemplates`.
-- **`storageClassName: gp2` is commented out** in `07-mongodb-statefulset.yaml` — uncomment for EKS.
-- **`05-secrets.yaml` has placeholder values** — change `change-this-in-production` before deploying.
-- **`output: 'standalone'` in `next.config.js`** is required — without it, Docker image won't have `server.js`.
-- **`docker-compose.yml` has `build:` directives** — it builds images locally, not just pulls.
-- **Region is `ap-south-1`** (Mumbai) — README previously mentioned `eu-west-1` which was incorrect.
+- **`03-mongodb-pvc.yaml` is an empty file** — the StatefulSet creates its own PVC via `volumeClaimTemplates`.
+- **`storageClassName: gp2` is commented out** in `07-mongodb-statefulset.yaml` — uncomment it for EKS deployment.
+- **`05-secrets.yaml` has placeholder values** — replace `change-this-in-production` before deploying.
+- **`output: 'standalone'` in `next.config.js`** is required — without it, Docker image won't contain `server.js`.
+- **`docker-compose.yml` includes `build:` directives** — it builds images locally from Dockerfiles, not just pulls.
+- **Region is `ap-south-1`** (Mumbai) — the README previously mentioned `eu-west-1` which was incorrect.
+- **EC2 public IPs change on restart** — assign an Elastic IP for a fixed address, or update webhook URLs after restart.
+- **Helm repos are session-scoped** — re-run `helm repo add` commands after EC2 restart.
